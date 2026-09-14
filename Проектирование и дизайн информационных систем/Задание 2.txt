@@ -1,0 +1,68 @@
+worker_processes 1;
+
+pid logs/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+
+    client_body_temp_path temp/client_body_temp;
+    proxy_temp_path temp/proxy_temp;
+    fastcgi_temp_path temp/fastcgi_temp;
+    uwsgi_temp_path temp/uwsgi_temp;
+scgi_temp_path temp/scgi_temp;
+	
+    access_log logs/access.log;
+    error_log logs/error.log;
+
+    server {
+        listen      10089;
+        server_name  site1.local;
+
+        location / {
+            root   www/site1/html;
+            index  index.html index.htm;
+        }
+    }
+
+    server {
+         listen 10089;
+         server_name site2.local;
+
+        location / {
+           root www/site2/html;
+           index index.html index.htm;
+        }
+
+    }
+
+
+}
+
+nano - изменить файл в текстовом редакторе
+или создать если его нет
+
+mkdir - создает папку
+mkdir -p - создает папки вложенные друг в друга
+
+touch - создает файл
+curl - отправляет запрос на сервер по ip
+curl -H "" - отправить запрос с заголовком, например:
+curl -H "Host: site2.local", где site2.local домен 
+к которому мы пытаемся обратиться
+
+rm -rf
+где -f без подтверждения удаление
+-r удалить все свложенные файлы и папки
+
+nginx -p ~/nginx -c ~/nginx/conf/nginx.conf - запуск
+nginx -p ~/nginx -c ~/nginx/conf/nginx.conf -t - протестировать конфиг
+nginx -p ~/nginx -c ~/nginx/conf/nginx.conf -s stop - остановить
+nginx -p ~/nginx -c ~/nginx/conf/nginx.conf -s reload - перезапустить
+
+
+
