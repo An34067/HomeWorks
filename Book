@@ -1,0 +1,279 @@
+from django.contrib.auth.models import User
+from django.core.validators import MinValueValidator, MaxValueValidator
+from django.db import models
+
+# Create your models here.
+
+class Author(models.Model):
+    full_name = models.CharField(max_length=255, verbose_name="ФИО автора")
+    bio = models.TextField(blank=True, null=True, verbose_name="Биография")
+    photo_url = models.URLField(blank=True, null=True, verbose_name="Фото (ссылка)")
+    birth_date = models.DateField(blank=True, null=True, verbose_name="Дата рождения")
+
+    class Meta:
+        verbose_name = "Автор"
+        verbose_name_plural = "Авторы"
+
+    def __str__(self):
+        return self.full_name
+
+
+class Category(models.Model):
+    name = models.CharField(max_length=100, unique=True, verbose_name="Название")
+
+    class Meta:
+        verbose_name = "Категория"
+        verbose_name_plural = "Категории"
+
+    def __str__(self):
+        return self.name
+
+
+class Book(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Черновик"
+        PUBLISHED = "published", "Опубликовано"
+        ARCHIVED = "archived", "В архиве"
+
+    category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name="books", verbose_name="Категория")
+    authors = models.ManyToManyField(Author, related_name="books", verbose_name="Авторы")
+    title = models.CharField(max_length=255, verbose_name="Название книги")
+    description = models.TextField(blank=True, null=True, verbose_name="Описание")
+    cover_url = models.URLField(blank=True, null=True, verbose_name="Обложка (ссылка)")
+    language = models.CharField(max_length=5, default="ru", verbose_name="Язык")
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.DRAFT, verbose_name="Статус")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
+
+    class Meta:
+        verbose_name = "Книга"
+        verbose_name_plural = "Книги"
+
+    def __str__(self):
+        return self.title
+
+
+class Chapter(models.Model):
+    book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name="chapters", verbose_name="Книга")
+    number = models.PositiveIntegerField(verbose_name="Номер главы")
+    title = models.CharField(max_length=255, blank=True, null=True, verbose_name="Название главы")
+    content = models.TextField(verbose_name="Содержание")
+
+    class Meta:
+        verbose_name = "Глава"
+        verbose_name_plural = "Главы"
+        unique_together = ("book", "number")
+        ordering = ["number"]
+
+    def __str__(self):
+        return f"Глава {self.number} - {self.book.title}"
+
+
+class Review(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="reviews", verbose_name="Пользователь")
+    book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name="reviews", verbose_name="Книга")
+    rating = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        verbose_name="Оценка (1-5)"
+    )
+    text = models.TextField(blank=True, null=True, verbose_name="Текст отзыва")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
+
+    class Meta:
+        verbose_name = "Отзыв"
+        verbose_name_plural = "Отзывы"
+        unique_together = ("user", "book")
+
+    def __str__(self):
+        return f"Отзыв от {self.user.username} на {self.book.title}"
+
+
+class UserBookStatus(models.Model):
+    class Status(models.TextChoices):
+        WANT_TO_READ = "want_to_read", "Хочу прочитать"
+        READING = "reading", "Читаю"
+        FINISHED = "finished", "Прочитано"
+        DROPPED = "dropped", "Брошено"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="library", verbose_name="Пользователь")
+    book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name="statuses", verbose_name="Книга")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.WANT_TO_READ, verbose_name="Статус чтения")
+    current_chapter = models.ForeignKey(Chapter, on_delete=models.SET_NULL, blank=True, null=True, verbose_name="Текущая глава")
+    percent = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name="Прогресс (%)")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
+
+    class Meta:
+        verbose_name = "Статус чтения"
+        verbose_name_plural = "Статусы чтения"
+        unique_together = ("user", "book")
+
+    def __str__(self):
+        return f"{self.user.username} - {self.book.title}"
+
+
+from django.contrib.auth.models import User
+from rest_framework import serializers
+from .models import Author, Category, Book, Chapter, Review, UserBookStatus
+
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ["id", "username", "email", "first_name", "last_name"]
+
+
+class AuthorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Author
+        fields = ["id", "full_name", "bio", "photo_url", "birth_date"]
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ["id", "name"]
+
+
+class ChapterListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Chapter
+        fields = ["id", "number", "title"]
+
+
+class ChapterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Chapter
+        fields = ["id", "book", "number", "title", "content"]
+        read_only_fields = ["book"]
+
+
+class ReviewSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+
+    class Meta:
+        model = Review
+        fields = ["id", "user", "book", "rating", "text", "created_at", "updated_at"]
+        read_only_fields = ["user", "book", "created_at", "updated_at"]
+
+
+class BookSerializer(serializers.ModelSerializer):
+    authors = AuthorSerializer(many=True, read_only=True)
+    author_ids = serializers.PrimaryKeyRelatedField(
+        many=True, write_only=True, queryset=Author.objects.all(), source="authors"
+    )
+
+    class Meta:
+        model = Book
+        fields = [
+            "id", "title", "description", "cover_url", "language", "status",
+            "category", "authors", "author_ids", "created_at", "updated_at",
+        ]
+        read_only_fields = ["created_at", "updated_at"]
+
+
+class UserBookStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserBookStatus
+        fields = ["id", "user", "book", "status", "current_chapter", "percent", "updated_at"]
+        read_only_fields = ["user", "updated_at"]
+
+
+
+from rest_framework import viewsets, filters, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+
+from .models import Author, Category, Book, Chapter, Review, UserBookStatus
+from .serializers import (
+    AuthorSerializer, CategorySerializer, BookSerializer,
+    ChapterSerializer, ChapterListSerializer, ReviewSerializer,
+    UserBookStatusSerializer,
+)
+
+
+class AuthorViewSet(viewsets.ModelViewSet):
+    queryset = Author.objects.all()
+    serializer_class = AuthorSerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ["full_name"]
+
+    @action(detail=True, methods=["get"])
+    def books(self, request, pk=None):
+        author = self.get_object()
+        return Response(BookSerializer(author.books.all(), many=True).data)
+
+
+class CategoryViewSet(viewsets.ModelViewSet):
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer
+
+    @action(detail=True, methods=["get"])
+    def books(self, request, pk=None):
+        category = self.get_object()
+        return Response(BookSerializer(category.books.all(), many=True).data)
+
+
+class BookViewSet(viewsets.ModelViewSet):
+    queryset = Book.objects.all().select_related("category").prefetch_related("authors")
+    serializer_class = BookSerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ["title", "description"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        if "category" in params:
+            qs = qs.filter(category_id=params["category"])
+        if "author" in params:
+            qs = qs.filter(authors__id=params["author"])
+        if "status" in params:
+            qs = qs.filter(status=params["status"])
+        return qs
+
+    @action(detail=True, methods=["get", "post"])
+    def chapters(self, request, pk=None):
+        book = self.get_object()
+        if request.method == "GET":
+            return Response(ChapterListSerializer(book.chapters.all(), many=True).data)
+        serializer = ChapterSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(book=book)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=400)
+
+    @action(detail=True, methods=["get"], url_path="chapters/(?P<number>[^/.]+)")
+    def chapter_detail(self, request, pk=None, number=None):
+        book = self.get_object()
+        chapter = book.chapters.filter(number=number).first()
+        if not chapter:
+            return Response({"detail": "Not found"}, status=404)
+        return Response(ChapterSerializer(chapter).data)
+
+    @action(detail=True, methods=["get", "post"])
+    def reviews(self, request, pk=None):
+        book = self.get_object()
+        if request.method == "GET":
+            return Response(ReviewSerializer(book.reviews.all(), many=True).data)
+        serializer = ReviewSerializer(data=request.data)
+        if serializer.is_valid():
+            # Пока авторизации нет, берем первого попавшегося юзера (или создай суперюзера в админке и укажи его ID)
+            # В будущем тут будет request.user
+            serializer.save(book=book, user_id=1) 
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+
+class ChapterViewSet(viewsets.ModelViewSet):
+    queryset = Chapter.objects.all()
+    serializer_class = ChapterSerializer
+
+
+class ReviewViewSet(viewsets.ModelViewSet):
+    queryset = Review.objects.all().select_related("user", "book")
+    serializer_class = ReviewSerializer
+
+
+class UserBookStatusViewSet(viewsets.ModelViewSet):
+    queryset = UserBookStatus.objects.all()
+    serializer_class = UserBookStatusSerializer
