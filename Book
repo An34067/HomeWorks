@@ -277,3 +277,237 @@ class ReviewViewSet(viewsets.ModelViewSet):
 class UserBookStatusViewSet(viewsets.ModelViewSet):
     queryset = UserBookStatus.objects.all()
     serializer_class = UserBookStatusSerializer
+
+
+
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+from django.shortcuts import get_object_or_404
+
+from .models import Author, Category, Book, Chapter, Review, UserBookStatus
+from .serializers import (
+    AuthorSerializer, CategorySerializer, BookSerializer,
+    ChapterSerializer, ChapterListSerializer, ReviewSerializer,
+    UserBookStatusSerializer,
+)
+
+# --- АВТОРЫ ---
+@method_decorator(csrf_exempt, name='dispatch')
+class AuthorListView(APIView):
+    def get(self, request):
+        authors = Author.objects.all()
+        serializer = AuthorSerializer(authors, many=True)
+        return Response({'data': serializer.data})
+
+    def post(self, request):
+        serializer = AuthorSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return self.get(request)
+        return Response({'status': 'error', 'code': 400, 'errors': serializer.errors}, status=400)
+
+@method_decorator(csrf_exempt, name='dispatch')
+class AuthorDetailView(APIView):
+    def get(self, request, pk):
+        author = get_object_or_404(Author, pk=pk)
+        serializer = AuthorSerializer(author)
+        return Response({'data': serializer.data})
+
+    def put(self, request, pk):
+        author = get_object_or_404(Author, pk=pk)
+        serializer = AuthorSerializer(author, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return self.get(request, pk)
+        return Response({'status': 'error', 'code': 400, 'errors': serializer.errors}, status=400)
+
+    def patch(self, request, pk):
+        author = get_object_or_404(Author, pk=pk)
+        serializer = AuthorSerializer(author, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return self.get(request, pk)
+        return Response({'status': 'error', 'code': 400, 'errors': serializer.errors}, status=400)
+
+    def delete(self, request, pk):
+        author = get_object_or_404(Author, pk=pk)
+        author.delete()
+        return Response({'status': 'deleted'})
+
+
+# --- КАТЕГОРИИ ---
+@method_decorator(csrf_exempt, name='dispatch')
+class CategoryListView(APIView):
+    def get(self, request):
+        categories = Category.objects.all()
+        serializer = CategorySerializer(categories, many=True)
+        return Response({'data': serializer.data})
+
+    def post(self, request):
+        serializer = CategorySerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return self.get(request)
+        return Response({'status': 'error', 'code': 400, 'errors': serializer.errors}, status=400)
+
+@method_decorator(csrf_exempt, name='dispatch')
+class CategoryDetailView(APIView):
+    def get(self, request, pk):
+        category = get_object_or_404(Category, pk=pk)
+        serializer = CategorySerializer(category)
+        return Response({'data': serializer.data})
+
+    def put(self, request, pk):
+        category = get_object_or_404(Category, pk=pk)
+        serializer = CategorySerializer(category, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return self.get(request, pk)
+        return Response({'status': 'error', 'code': 400, 'errors': serializer.errors}, status=400)
+
+    def patch(self, request, pk):
+        category = get_object_or_404(Category, pk=pk)
+        serializer = CategorySerializer(category, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return self.get(request, pk)
+        return Response({'status': 'error', 'code': 400, 'errors': serializer.errors}, status=400)
+
+    def delete(self, request, pk):
+        category = get_object_or_404(Category, pk=pk)
+        category.delete()
+        return Response({'status': 'deleted'})
+
+
+# --- КНИГИ ---
+@method_decorator(csrf_exempt, name='dispatch')
+class BookListView(APIView):
+    def get(self, request):
+        books = Book.objects.all().select_related("category").prefetch_related("authors")
+        
+        # Фильтрация вручную, как ты любишь
+        category_id = request.query_params.get('category')
+        author_id = request.query_params.get('author')
+        status_param = request.query_params.get('status')
+        search = request.query_params.get('search')
+
+        if category_id:
+            books = books.filter(category_id=category_id)
+        if author_id:
+            books = books.filter(authors__id=author_id)
+        if status_param:
+            books = books.filter(status=status_param)
+        if search:
+            books = books.filter(title__icontains=search)
+
+        serializer = BookSerializer(books, many=True)
+        return Response({'data': serializer.data})
+
+    def post(self, request):
+        serializer = BookSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return self.get(request)
+        return Response({'status': 'error', 'code': 400, 'errors': serializer.errors}, status=400)
+
+@method_decorator(csrf_exempt, name='dispatch')
+class BookDetailView(APIView):
+    def get(self, request, pk):
+        book = get_object_or_404(Book, pk=pk)
+        serializer = BookSerializer(book)
+        return Response({'data': serializer.data})
+
+    def put(self, request, pk):
+        book = get_object_or_404(Book, pk=pk)
+        serializer = BookSerializer(book, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return self.get(request, pk)
+        return Response({'status': 'error', 'code': 400, 'errors': serializer.errors}, status=400)
+
+    def patch(self, request, pk):
+        book = get_object_or_404(Book, pk=pk)
+        serializer = BookSerializer(book, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return self.get(request, pk)
+        return Response({'status': 'error', 'code': 400, 'errors': serializer.errors}, status=400)
+
+    def delete(self, request, pk):
+        book = get_object_or_404(Book, pk=pk)
+        book.delete()
+        return Response({'status': 'deleted'})
+
+
+# --- ГЛАВЫ (Вложенные в книгу) ---
+@method_decorator(csrf_exempt, name='dispatch')
+class BookChaptersView(APIView):
+    def get(self, request, book_pk):
+        book = get_object_or_404(Book, pk=book_pk)
+        chapters = book.chapters.all()
+        serializer = ChapterListSerializer(chapters, many=True)
+        return Response({'data': serializer.data})
+
+    def post(self, request, book_pk):
+        book = get_object_or_404(Book, pk=book_pk)
+        serializer = ChapterSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(book=book)
+            return self.get(request, book_pk)
+        return Response({'status': 'error', 'code': 400, 'errors': serializer.errors}, status=400)
+
+@method_decorator(csrf_exempt, name='dispatch')
+class BookChapterDetailView(APIView):
+    def get(self, request, book_pk, number):
+        book = get_object_or_404(Book, pk=book_pk)
+        chapter = get_object_or_404(Chapter, book=book, number=number)
+        serializer = ChapterSerializer(chapter)
+        return Response({'data': serializer.data})
+
+    def put(self, request, book_pk, number):
+        book = get_object_or_404(Book, pk=book_pk)
+        chapter = get_object_or_404(Chapter, book=book, number=number)
+        serializer = ChapterSerializer(chapter, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return self.get(request, book_pk, number)
+        return Response({'status': 'error', 'code': 400, 'errors': serializer.errors}, status=400)
+
+    def patch(self, request, book_pk, number):
+        book = get_object_or_404(Book, pk=book_pk)
+        chapter = get_object_or_404(Chapter, book=book, number=number)
+        serializer = ChapterSerializer(chapter, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return self.get(request, book_pk, number)
+        return Response({'status': 'error', 'code': 400, 'errors': serializer.errors}, status=400)
+
+    def delete(self, request, book_pk, number):
+        book = get_object_or_404(Book, pk=book_pk)
+        chapter = get_object_or_404(Chapter, book=book, number=number)
+        chapter.delete()
+        return Response({'status': 'deleted'})
+
+
+# --- ОТЗЫВЫ ---
+@method_decorator(csrf_exempt, name='dispatch')
+class BookReviewsView(APIView):
+    def get(self, request, book_pk):
+        book = get_object_or_404(Book, pk=book_pk)
+        reviews = book.reviews.all()
+        serializer = ReviewSerializer(reviews, many=True)
+        return Response({'data': serializer.data})
+
+    def post(self, request, book_pk):
+        book = get_object_or_404(Book, pk=book_pk)
+        serializer = ReviewSerializer(data=request.data)
+        if serializer.is_valid():
+            # Временно ставим user_id=1 (первого суперюзера). Позже заменим на request.user
+            serializer.save(book=book, user_id=1)
+            return self.get(request, book_pk)
+        return Response({'status': 'error', 'code': 400, 'errors': serializer.errors}, status=400)
