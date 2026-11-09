@@ -1,3 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Запуск таймера</title>
+</head>
+<body>
+    <h1>Настройка таймера</h1>
+    <form method="post">
+        {% csrf_token %}
+        <label>Количество секунд:</label>
+        <input type="number" name="seconds" required>
+        <button type="submit">Запуск</button>
+    </form>
+</body>
+</html>
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Таймер</title>
+</head>
+<body>
+    <h1>Обратный отсчет: <span id="timer">0</span></h1>
+    <a href="/start/">Настроить</a>
+
+    <script>
+        const timerElement = document.getElementById('timer');
+        const secondsToStart = {{ seconds|default:0 }};
+        const ws = new WebSocket('ws://' + window.location.host + '/ws/timer/');
+
+        // Ждем, пока сокет полностью откроется
+        ws.onopen = function() {
+            if (secondsToStart > 0) {
+                ws.send(JSON.stringify({
+                    'action': 'start',
+                    'seconds': secondsToStart
+                }));
+            }
+        };
+
+        ws.onmessage = function(e) {
+            timerElement.textContent = e.data;
+        };
+    </script>
+</body>
+</html>
+
+
+
+from django.shortcuts import render
+from django.http import HttpResponse
+
+def start_page(request):
+    if request.method == 'POST':
+        seconds = request.POST.get('seconds')
+        request.session['timer_seconds'] = seconds
+        # Вместо redirect используем HttpResponse с JS-переадресацией
+        return HttpResponse(f"<script>window.location.href='/';</script>")
+    return render(request, 'start.html')
+
+def index(request):
+    seconds = request.session.get('timer_seconds', 0)
+    # Очищаем сессию после получения, чтобы таймер не запускался при обновлении
+    if 'timer_seconds' in request.session:
+        del request.session['timer_seconds']
+    return render(request, 'index.html', {'seconds': seconds})
+
+
+import asyncio
+import json
+from channels.generic.websocket import AsyncWebsocketConsumer
+
+class TimerConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        await self.channel_layer.group_add('timer_group', self.channel_name)
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard('timer_group', self.channel_name)
+
+    async def receive(self, text_data):
+        data = json.loads(text_data)
+        if data.get('action') == 'start':
+            seconds = int(data.get('seconds', 10))
+            # Запускаем фоновую задачу, чтобы не блокировать получение сообщений
+            asyncio.create_task(self.run_timer(seconds))
+
+    async def run_timer(self, seconds):
+        for i in range(seconds, -1, -1):
+            await self.channel_layer.group_send(
+                'timer_group',
+                {
+                    'type': 'timer_update',
+                    'time_left': i
+                }
+            )
+            await asyncio.sleep(1)
+
+    async def timer_update(self, event):
+        await self.send(text_data=str(event['time_left']))
+
+
+
+
+
+
+
+
+
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
