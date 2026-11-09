@@ -513,3 +513,6 @@ class BookReviewsView(APIView):
         return Response({'status': 'error', 'code': 400, 'errors': serializer.errors}, status=400)
 
 https://chat.deepseek.com/share/kpqgmqes9vwv8lr30o
+
+
+https://chat.deepseek.com/share/0gvdthjc1ovp8m9zh7
