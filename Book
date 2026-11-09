@@ -511,3 +511,5 @@ class BookReviewsView(APIView):
             serializer.save(book=book, user_id=1)
             return self.get(request, book_pk)
         return Response({'status': 'error', 'code': 400, 'errors': serializer.errors}, status=400)
+
+https://chat.deepseek.com/share/kpqgmqes9vwv8lr30o
