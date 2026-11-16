@@ -1,0 +1,125 @@
+import json
+from channels.generic.websocket import AsyncWebsocketConsumer
+
+game_state = {
+    "players": [],
+    "current_turn": 0,
+    "used_cities": [],
+    "last_city": None,
+}
+
+class CityGameConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        self.room_group_name = "game_room"
+        
+        if len(game_state["players"]) >= 2:
+            await self.close()
+            return
+
+        await self.channel_layer.group_add(self.room_group_name, self.channel_name)
+        
+        game_state["players"].append(self.channel_name)
+        await self.accept()
+        
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {"type": "game_state", "state": self.get_public_state()}
+        )
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
+        if self.channel_name in game_state["players"]:
+            game_state["players"].remove(self.channel_name)
+
+    async def receive(self, text_data):
+        data = json.loads(text_data)
+        action = data.get("action")
+        user_city = data.get("city", "").strip().lower()
+
+        if game_state["players"][game_state["current_turn"]] != self.channel_name:
+            return await self.send_error("Сейчас не ваш ход!")
+
+        if action == "give_up":
+            await self.handle_give_up()
+            return
+
+        if user_city in game_state["used_cities"]:
+            return await self.send_error("Этот город уже называли!")
+        
+        if game_state["last_city"]:
+            last_letter = game_state["last_city"][-1]
+            if last_letter in "ъыь":
+                last_letter = game_state["last_city"][-2]
+            
+            if user_city[0] != last_letter:
+                return await self.send_error(f"Город должен начинаться на букву '{last_letter.upper()}'!")
+
+        game_state["used_cities"].append(user_city)
+        game_state["last_city"] = user_city
+        game_state["current_turn"] = 1 - game_state["current_turn"]
+
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {"type": "game_state", "state": self.get_public_state(), "last_move": user_city}
+        )
+
+    async def handle_give_up(self):
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {"type": "game_state", "state": self.get_public_state(), "message": "Игрок сдался. Игра завершена."}
+        )
+        game_state["players"].clear()
+        game_state["current_turn"] = 0
+        game_state["used_cities"].clear()
+        game_state["last_city"] = None
+
+    def get_public_state(self):
+        return {
+            "players_count": len(game_state["players"]),
+            "current_turn": game_state["current_turn"],
+            "used_cities": game_state["used_cities"],
+            "game_over": len(game_state["players"]) < 2
+        }
+
+    async def send_error(self, message):
+        await self.send(text_data=json.dumps({"error": message}))
+
+
+
+<script>
+    const gameSocket = new WebSocket('ws://' + window.location.host + '/ws/game/');
+
+    gameSocket.onmessage = function(e) {
+        const data = JSON.parse(e.data);
+        
+        if (data.error) {
+            alert(data.error);
+        } else if (data.state) {
+            document.getElementById('turn-info').innerText = `Ход игрока ${data.state.current_turn + 1}`;
+            document.getElementById('used-cities').innerText = data.state.used_cities.join(', ');
+            
+            if (data.state.game_over) {
+                alert('Игра завершена!');
+            }
+        }
+    };
+
+    function sendCity() {
+        const cityInput = document.getElementById('city-input');
+        gameSocket.send(JSON.stringify({
+            'action': 'move',
+            'city': cityInput.value
+        }));
+        cityInput.value = '';
+    }
+
+    function giveUp() {
+        gameSocket.send(JSON.stringify({'action': 'give_up'}));
+    }
+</script>
+
+<input type="text" id="city-input" placeholder="Введите город...">
+<button onclick="sendCity()">Отправить</button>
+<button onclick="giveUp()">Сдаться</button>
+<div id="turn-info"></div>
+<div id="used-cities"></div>
