@@ -1,3 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Игра "Города"</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 50px auto; }
+        .controls { margin-bottom: 20px; }
+        #used-cities { color: gray; font-size: 0.9em; word-wrap: break-word; }
+    </style>
+</head>
+<body>
+    <h1>Игра "Города"</h1>
+    
+    <div class="controls">
+        <input type="text" id="city-input" placeholder="Введите город...">
+        <button onclick="sendCity()">Отправить</button>
+        <button onclick="giveUp()">Сдаться</button>
+    </div>
+
+    <h3 id="turn-info">Ожидание второго игрока...</h3>
+    
+    <h4>Использованные города:</h4>
+    <div id="used-cities"></div>
+
+    <script>
+        const gameSocket = new WebSocket('ws://' + window.location.host + '/ws/game/');
+
+        gameSocket.onmessage = function(e) {
+            const data = JSON.parse(e.data);
+            
+            if (data.error) {
+                alert(data.error);
+            } else if (data.state) {
+                document.getElementById('turn-info').innerText = `Ход игрока ${data.state.current_turn + 1}`;
+                document.getElementById('used-cities').innerText = data.state.used_cities.join(', ');
+                
+                if (data.state.game_over) {
+                    document.getElementById('turn-info').innerText = "Игра завершена!";
+                }
+            }
+        };
+
+        function sendCity() {
+            const cityInput = document.getElementById('city-input');
+            if (!cityInput.value.trim()) return;
+            
+            gameSocket.send(JSON.stringify({
+                'action': 'move',
+                'city': cityInput.value
+            }));
+            cityInput.value = '';
+        }
+
+        function giveUp() {
+            gameSocket.send(JSON.stringify({'action': 'give_up'}));
+        }
+    </script>
+</body>
+</html>
+
+
+
+
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 
