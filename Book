@@ -1,3 +1,67 @@
+import http.server
+import ssl
+import urllib.request
+import json
+
+class ProxyHandler(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        if self.path.startswith('/api/'):
+            self.proxy_request('GET')
+        else:
+            super().do_GET()
+
+    def do_POST(self):
+        if self.path.startswith('/api/'):
+            self.proxy_request('POST')
+        else:
+            self.send_error(405)
+
+    def proxy_request(self, method):
+        url = 'https://192.168.170.40:10101' + self.path
+        
+        # Игнорируем ошибку сертификата (для самоподписанного)
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+
+        data = None
+        if method == 'POST':
+            length = int(self.headers.get('Content-Length', 0))
+            data = self.rfile.read(length)
+
+        req = urllib.request.Request(url, data=data, method=method)
+        
+        # Прокидываем заголовки (важно для CSRF!)
+        for header in self.headers:
+            if header.lower() in ['content-type', 'x-csrftoken', 'cookie']:
+                req.add_header(header, self.headers[header])
+
+        try:
+            with urllib.request.urlopen(req, context=ctx) as response:
+                self.send_response(response.status)
+                for k, v in response.headers.items():
+                    if k.lower() not in ['transfer-encoding', 'connection']:
+                        self.send_header(k, v)
+                self.end_headers()
+                self.wfile.write(response.read())
+        except Exception as e:
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(str(e).encode())
+
+httpd = http.server.HTTPServer(('0.0.0.0', 8443), ProxyHandler)
+ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+ctx.load_cert_chain('cert.pem', 'key.pem')
+httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+print("Фронтенд с прокси запущен: https://localhost:8443")
+httpd.serve_forever()
+
+
+
+
+
+
+
 import asyncio
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
