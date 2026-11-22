@@ -1,0 +1,6 @@
+1) run.bat
+2) pip install -r requirements.txt
+python app.py
+login:
+Логин: Admin
+Пароль: KorokNET
